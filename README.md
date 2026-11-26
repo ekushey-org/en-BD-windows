@@ -16,6 +16,7 @@ A lightweight, open-source Windows installer by **[ekushey.org](https://ekushey.
 | **Date & Time** | **`DD/MM/YYYY`**, **12-hour `AM`/`PM`**, **Sunday** as first day of the week |
 | **Units & Paper** | **Metric** (`Metre`, `Kilometre`, `Celsius`) and **ISO A4** |
 | **Default Keyboard** | **US with Taka sign** - **`Shift + 4` = `৳`**, **`AltGr + 4` (`Ctrl+Alt+4`) = `$`** |
+| **Display Language** | **English (en-BD)** *(uses Microsoft's `en-GB` display pack on Windows 11 & updated Windows 10)* |
 
 ---
 
@@ -36,6 +37,11 @@ Single universal binary (`en-BD-Setup.exe`) supporting **x86 (32-bit), x64 (64-b
 ---
 
 ## Important Notices
+> **Internet Connection Required:**
+> First-time installation requires an active internet connection so Windows Update can download Microsoft's `en-GB` display language pack. If your PC is offline, setup aborts cleanly without changing existing settings. On Windows 10 (21H2/22H2 or LTSC 2021), ensure Windows Update is current so the display pack installs automatically.
+
+> **Windows SmartScreen Notice (Unsigned Binary):**
+> Release binaries are compiled directly from this repository via GitHub Actions, but are currently unsigned while the project builds public visibility for open-source code signing. If Windows SmartScreen appears, verify the `.sha256` checksum and click **More info → Run anyway**.
 
 > **Note for Windows Home Single Language Users:**
 > Windows Single Language editions lock the OS display language to a single built-in Microsoft language pack. This installer **does not replace or remove** your Windows display language or system locale - it safely adds the **`en-BD`** regional format (`৳`, Lakh/Crore, `DD/MM/YYYY`, Metric, A4) and the **US with Taka sign** keyboard layout on top of your existing edition.
