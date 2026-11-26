@@ -2,7 +2,7 @@
 
 This project signs official Windows release binaries built from this public repository so Windows users can install the **English (Bangladesh) [`en-BD`]** regional locale and **US with Taka sign** keyboard layout safely without tampering risks.
 
-> Free code signing provided by [SignPath.io](https://signpath.io/), certificate by [SignPath Foundation](https://signpath.org/). *(Pending approval - interim preview builds are unsigned and clearly labelled on GitHub Releases.)*
+> **Current status:** Release binaries are built transparently from this repository on GitHub Actions and published with SHA-256 checksums. Binaries are currently **unsigned** while the project establishes the public community visibility required for open-source code signing programs (such as SignPath Foundation).
 
 ## Scope of Signed Binaries
 
