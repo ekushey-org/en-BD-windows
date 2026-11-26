@@ -1,0 +1,126 @@
+name: Build & Release en-BD Windows Installer
+
+on:
+  push:
+    branches: [ main ]
+    paths-ignore:
+      - '**.md'
+      - 'LICENSE'
+    tags: [ 'v*', 'V*' ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-2022
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Ensure Visual Studio ARM64 C++ build tools are installed
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vsPath = & $vswhere -latest -products * -property installationPath | Select-Object -First 1
+          $armTools = Get-ChildItem -Path "$vsPath\VC\Tools\MSVC" -Recurse -Filter "arm64" -Directory -ErrorAction SilentlyContinue
+          if (-not $armTools) {
+            Write-Host "Installing MSVC ARM64 build tools via Visual Studio Installer..."
+            $installer = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\setup.exe"
+            $proc = Start-Process -FilePath $installer -ArgumentList @(
+              "modify",
+              "--installPath", "`"$vsPath`"",
+              "--add", "Microsoft.VisualStudio.Component.VC.Tools.ARM64",
+              "--quiet",
+              "--norestart",
+              "--nocache"
+            ) -Wait -PassThru
+            if ($proc.ExitCode -ne 0 -and $proc.ExitCode -ne 3010) {
+              throw "Visual Studio Installer failed with exit code $($proc.ExitCode)"
+            }
+          } else {
+            Write-Host "MSVC ARM64 build tools already present."
+          }
+
+      - name: Detect SignPath configuration
+        id: signcfg
+        shell: pwsh
+        env:
+          SP_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
+          SP_ORG: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          SP_PROJ: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+        run: |
+          $isTag = "${{ (startsWith(github.ref, 'refs/tags/v') || startsWith(github.ref, 'refs/tags/V')) }}" -eq "True"
+          if ($env:SP_TOKEN -and $env:SP_ORG -and $env:SP_PROJ) {
+            $policy = if ($isTag) { "release-signing" } else { "test-signing" }
+            "enabled=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+            "policy=$policy" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+            Write-Host "SignPath signing enabled using policy: $policy"
+          } else {
+            "enabled=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+            Write-Host "SignPath secrets/variables not configured yet; building unsigned preview."
+          }
+
+      - name: Build kbdusbd.dll (x86/x64/ARM64) and en-BD-Setup.exe
+        shell: pwsh
+        run: |
+          .\build.ps1 -Configuration Release
+
+      - name: Upload unsigned en-BD-Setup.exe for SignPath
+        if: steps.signcfg.outputs.enabled == 'true'
+        id: upload-unsigned-setup
+        uses: actions/upload-artifact@v7
+        with:
+          name: unsigned-setup-exe
+          path: dist/en-BD-Setup.exe
+          retention-days: 1
+
+      - name: Sign en-BD-Setup.exe with SignPath Foundation
+        if: steps.signcfg.outputs.enabled == 'true'
+        uses: SignPath/github-action-submit-signing-request@v2
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ steps.signcfg.outputs.policy }}
+          artifact-configuration-slug: setup-exe
+          github-artifact-id: ${{ steps.upload-unsigned-setup.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: signed-setup
+
+      - name: Verify signed en-BD-Setup.exe and refresh SHA-256
+        if: steps.signcfg.outputs.enabled == 'true'
+        shell: pwsh
+        run: |
+          $signedExe = "signed-setup\en-BD-Setup.exe"
+          $sig = Get-AuthenticodeSignature $signedExe
+          if (-not $sig.SignerCertificate) {
+            throw "Expected signed en-BD-Setup.exe but no certificate was found."
+          }
+          Write-Host "Verified $signedExe -> $($sig.SignerCertificate.Subject) [$($sig.Status)]"
+          Copy-Item -Force $signedExe "dist\en-BD-Setup.exe"
+          $hash = (Get-FileHash "dist\en-BD-Setup.exe" -Algorithm SHA256).Hash
+          Set-Content -Path "dist\en-BD-Setup.exe.sha256" -Value "$hash  en-BD-Setup.exe"
+
+      - name: Upload final installer and architecture DLLs
+        uses: actions/upload-artifact@v7
+        with:
+          name: en-BD-Setup
+          path: |
+            dist/en-BD-Setup.exe
+            dist/en-BD-Setup.exe.sha256
+            build/kbd/x86/kbdusbd.dll
+            build/kbd/wow64/kbdusbd.dll
+            build/kbd/x64/kbdusbd.dll
+            build/kbd/arm64/kbdusbd.dll
+
+      - name: Publish GitHub Release on version tag
+        if: (startsWith(github.ref, 'refs/tags/v') || startsWith(github.ref, 'refs/tags/V'))
+        uses: softprops/action-gh-release@v3
+        with:
+          files: |
+            dist/en-BD-Setup.exe
+            dist/en-BD-Setup.exe.sha256
+          generate_release_notes: true
